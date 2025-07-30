@@ -17,7 +17,8 @@ import {
   FileText,
   Award,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react'
 import { StudyPlan, PlanStep } from '@/types'
 import { formatDate } from '@/lib/utils'
@@ -28,14 +29,14 @@ interface StudyPlanPanelProps {
 
 const defaultPlan: StudyPlan = {
   id: '1',
-  title: '美国计算机科学硕士申请计划',
-  targetCountry: '美国',
-  targetMajor: '计算机科学',
-  targetDegree: '硕士',
+  title: '日本经营学修士申请计划',
+  targetCountry: '日本',
+  targetMajor: '经营学',
+  targetDegree: '修士',
   universities: [],
   requirements: {
-    language: 'TOEFL 100+ 或 IELTS 7.0+',
-    standardTest: 'GRE 320+',
+    language: 'JLPT N1 或 TOEFL 85+',
+    standardTest: '根据学校要求',
     gpa: '3.5+',
     experience: '实习或研究经历'
   },
@@ -45,8 +46,8 @@ const defaultPlan: StudyPlan = {
   timeline: [
     {
       id: '1',
-      title: '语言考试准备',
-      description: '准备并通过TOEFL或IELTS考试',
+      title: '日语能力提升',
+      description: '准备并通过JLPT N1考试',
       deadline: new Date(2024, 5, 30),
       completed: true,
       priority: 'high',
@@ -54,8 +55,8 @@ const defaultPlan: StudyPlan = {
     },
     {
       id: '2',
-      title: 'GRE考试准备',
-      description: '准备并参加GRE考试，目标320+',
+      title: 'TOEFL考试准备',
+      description: '准备并参加TOEFL考试，目标85+分',
       deadline: new Date(2024, 7, 15),
       completed: false,
       priority: 'high',
@@ -63,12 +64,12 @@ const defaultPlan: StudyPlan = {
     },
     {
       id: '3',
-      title: '实习经历积累',
-      description: '在相关公司或实验室积累实习经验',
+      title: '研究计划书撰写',
+      description: '根据目标教授的研究方向撰写研究计划书',
       deadline: new Date(2024, 8, 30),
       completed: false,
-      priority: 'medium',
-      category: 'other'
+      priority: 'high',
+      category: 'document'
     },
     {
       id: '4',
@@ -81,15 +82,6 @@ const defaultPlan: StudyPlan = {
     },
     {
       id: '5',
-      title: '个人陈述撰写',
-      description: '撰写个人陈述和研究计划',
-      deadline: new Date(2024, 10, 15),
-      completed: false,
-      priority: 'high',
-      category: 'document'
-    },
-    {
-      id: '6',
       title: '申请材料提交',
       description: '提交完整的申请材料',
       deadline: new Date(2024, 11, 15),
@@ -104,6 +96,8 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
   const [selectedTab, setSelectedTab] = useState('timeline')
   const [tasks, setTasks] = useState(studyPlan.timeline)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generatedPlan, setGeneratedPlan] = useState<string>('')
+  const [showGeneratedPlan, setShowGeneratedPlan] = useState(false)
 
   const toggleTask = (taskId: string) => {
     setTasks(prev => 
@@ -118,16 +112,55 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
   const handleGeneratePlan = async () => {
     setIsGenerating(true)
     
-    // 模拟调用后端LLM Agent生成计划
-    setTimeout(() => {
-      console.log('调用LLM Agent生成个性化考学计划...')
-      // 这里可以添加实际的API调用
-      // const newPlan = await generateStudyPlan(userProfile)
+    try {
+      const response = await fetch('/api/generate-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userProfile: {
+            name: '李同学',
+            applicationDirection: '经营学修士',
+            graduationUniversity: '中国海洋大学',
+            major: '日语专业',
+            thesisTitle: '日本企业文化研究',
+            japaneseScore: '备考中',
+            englishScore: 'TOEFL 85分',
+            departureDate: '2024年10月',
+            expectedGoal: '希望进入一流国立大学'
+          },
+          targetCountry: studyPlan.targetCountry,
+          targetMajor: studyPlan.targetMajor,
+          targetDegree: studyPlan.targetDegree,
+          currentStage: '准备阶段'
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('生成计划失败')
+      }
+
+      const data = await response.json()
       
+      if (data.success) {
+        setGeneratedPlan(data.plan)
+        setShowGeneratedPlan(true)
+        
+        // 可以在这里更新任务列表
+        // setTasks(parsePlanToTasks(data.parsedPlan))
+        
+        console.log('AI生成的个性化考学计划:', data.plan)
+      } else {
+        throw new Error(data.error || '生成计划失败')
+      }
+      
+    } catch (error) {
+      console.error('生成计划失败:', error)
+      alert('生成计划失败，请稍后再试。')
+    } finally {
       setIsGenerating(false)
-      // 可以在这里更新计划状态
-      alert('个性化考学计划生成完成！计划已根据您的背景和目标进行优化。')
-    }, 3000)
+    }
   }
 
   const getPriorityColor = (priority: string) => {
@@ -170,7 +203,7 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
             onClick={handleGeneratePlan}
             disabled={isGenerating}
             size="sm"
-            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
           >
             {isGenerating ? (
               <>
@@ -198,6 +231,9 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
             <TabsList className="w-full">
               <TabsTrigger value="timeline" className="flex-1">时间线</TabsTrigger>
               <TabsTrigger value="overview" className="flex-1">概览</TabsTrigger>
+              {showGeneratedPlan && (
+                <TabsTrigger value="ai-plan" className="flex-1">AI计划</TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
         </div>
@@ -214,6 +250,23 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
                       <div className="font-medium text-purple-900">AI正在生成个性化考学计划...</div>
                       <div className="text-sm text-purple-700 mt-1">
                         正在分析您的背景信息，制定最适合的申请时间规划
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 生成成功提示 */}
+            {showGeneratedPlan && !isGenerating && (
+              <Card className="mb-4 border-2 border-green-300 bg-green-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    <div>
+                      <div className="font-medium text-green-900">AI计划生成完成！</div>
+                      <div className="text-sm text-green-700 mt-1">
+                        个性化考学计划已生成，请查看"AI计划"标签页
                       </div>
                     </div>
                   </div>
@@ -381,6 +434,26 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
               </Card>
             </div>
           </TabsContent>
+
+          {/* AI生成的计划标签页 */}
+          {showGeneratedPlan && (
+            <TabsContent value="ai-plan" className="mt-0">
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  <h4 className="font-medium">AI生成的个性化留学规划</h4>
+                </div>
+                <div className="prose max-w-none">
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed bg-gray-50 p-4 rounded-lg">
+                    {generatedPlan}
+                  </div>
+                </div>
+                <div className="mt-4 text-xs text-gray-500">
+                  此计划由AI根据您的个人背景生成，仅供参考。建议结合实际情况进行调整。
+                </div>
+              </Card>
+            </TabsContent>
+          )}
         </div>
       </CardContent>
     </Card>
