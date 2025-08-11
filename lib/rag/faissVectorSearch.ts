@@ -12,13 +12,15 @@ interface ProfessorMetadata {
   email: string
 }
 
+interface RagDocument {
+  id: string
+  text: string
+  metadata: ProfessorMetadata
+}
+
 interface VectorData {
   vectors: number[][]
-  metadata: {
-    id: string
-    text: string
-    metadata: ProfessorMetadata
-  }[]
+  metadata: RagDocument[] | ProfessorMetadata[]
   index_info: {
     total_vectors: number
     vector_dimension: number
@@ -32,6 +34,15 @@ interface SearchResult {
   score: number
 }
 
+// 类型保护函数
+function isRagDocument(item: any): item is RagDocument {
+  return item && typeof item.id === 'string' && typeof item.text === 'string' && item.metadata
+}
+
+function isProfessorMetadata(item: any): item is ProfessorMetadata {
+  return item && typeof item.name === 'string' && Array.isArray(item.fields)
+}
+
 export class FaissVectorSearch {
   private vectorData: VectorData | null = null
   private isInitialized = false
@@ -40,32 +51,50 @@ export class FaissVectorSearch {
     if (this.isInitialized) return
 
     try {
-      // 优先尝试加载转换后的向量数据
-      const vectorDataPath = path.resolve('./data/vectors_with_metadata.json')
+      // 优先尝试加载RAG文档数据
+      const ragDocsPath = path.resolve('./data/rag_documents.json')
       
-      if (fs.existsSync(vectorDataPath)) {
-        console.log('🔍 加载FAISS向量数据...')
-        const content = fs.readFileSync(vectorDataPath, 'utf-8')
-        this.vectorData = JSON.parse(content)
-        console.log(`✅ 成功加载 ${this.vectorData?.index_info.total_vectors} 个向量`)
-      } else {
-        // 回退到仅元数据模式
-        console.log('⚠️  未找到向量数据文件，使用文本匹配模式')
-        console.log('💡 提示：运行 python scripts/convertFaissToJson.py 来启用向量搜索')
+      if (fs.existsSync(ragDocsPath)) {
+        console.log('🔍 加载RAG文档数据...')
+        const content = fs.readFileSync(ragDocsPath, 'utf-8')
+        const ragDocs = JSON.parse(content)
         
-        // 加载基本元数据
-        const metadataPath = path.resolve(config.rag.metadataPath)
-        if (fs.existsSync(metadataPath)) {
-          const metadataContent = fs.readFileSync(metadataPath, 'utf-8')
-          const metadata = JSON.parse(metadataContent)
+        this.vectorData = {
+          vectors: [],
+          metadata: ragDocs,
+          index_info: {
+            total_vectors: ragDocs.length,
+            vector_dimension: 0,
+            index_type: 'text-only'
+          }
+        }
+        console.log(`✅ 成功加载 ${ragDocs.length} 个RAG文档`)
+      } else {
+        // 回退到向量数据
+        const vectorDataPath = path.resolve('./data/vectors_with_metadata.json')
+        
+        if (fs.existsSync(vectorDataPath)) {
+          console.log('🔍 加载FAISS向量数据...')
+          const content = fs.readFileSync(vectorDataPath, 'utf-8')
+          this.vectorData = JSON.parse(content)
+          console.log(`✅ 成功加载 ${this.vectorData?.index_info.total_vectors} 个向量`)
+        } else {
+          // 最后回退到仅元数据模式
+          console.log('⚠️  未找到数据文件，使用元数据模式')
           
-          this.vectorData = {
-            vectors: [],
-            metadata: metadata,
-            index_info: {
-              total_vectors: metadata.length,
-              vector_dimension: 0,
-              index_type: 'text-only'
+          const metadataPath = path.resolve(config.rag.metadataPath)
+          if (fs.existsSync(metadataPath)) {
+            const metadataContent = fs.readFileSync(metadataPath, 'utf-8')
+            const metadata = JSON.parse(metadataContent)
+            
+            this.vectorData = {
+              vectors: [],
+              metadata: metadata,
+              index_info: {
+                total_vectors: metadata.length,
+                vector_dimension: 0,
+                index_type: 'text-only'
+              }
             }
           }
         }
@@ -124,11 +153,24 @@ export class FaissVectorSearch {
       const results = similarities
         .slice(0, topK)
         .filter(item => item.similarity > 0.1) // 过滤低相似度结果
-        .map(item => ({
-          text: item.metadata.text,
-          metadata: item.metadata.metadata,
-          score: item.similarity
-        }))
+        .map(item => {
+          const doc = item.metadata
+          if (isRagDocument(doc)) {
+            return {
+              text: doc.text,
+              metadata: doc.metadata,
+              score: item.similarity
+            }
+          } else if (isProfessorMetadata(doc)) {
+            return {
+              text: `${doc.name} - ${doc.fields?.join(', ') || ''}`,
+              metadata: doc,
+              score: item.similarity
+            }
+          } else {
+            throw new Error('Unknown document format')
+          }
+        })
 
       console.log(`✅ 向量搜索找到 ${results.length} 个相关结果`)
       return results
@@ -148,12 +190,26 @@ export class FaissVectorSearch {
     
     const results: SearchResult[] = this.vectorData.metadata
       .map(doc => {
-        const textLower = doc.text.toLowerCase()
+        let text = ''
+        let metadata: ProfessorMetadata
         let score = 0
         
+        // 处理不同的数据格式
+        if (isRagDocument(doc)) {
+          text = doc.text
+          metadata = doc.metadata
+        } else if (isProfessorMetadata(doc)) {
+          text = `${doc.name} - ${doc.fields?.join(', ') || ''}`
+          metadata = doc
+        } else {
+          return null // 跳过无效格式
+        }
+        
+        const textLower = text.toLowerCase()
+        
         // 关键词匹配 (权重: 3)
-        if (doc.metadata.keywords) {
-          doc.metadata.keywords.forEach(keyword => {
+        if (metadata.keywords) {
+          metadata.keywords.forEach((keyword: string) => {
             if (queryLower.includes(keyword.toLowerCase())) {
               score += 3
             }
@@ -161,8 +217,8 @@ export class FaissVectorSearch {
         }
         
         // 研究领域匹配 (权重: 4)
-        if (doc.metadata.fields) {
-          doc.metadata.fields.forEach(field => {
+        if (metadata.fields) {
+          metadata.fields.forEach((field: string) => {
             if (queryLower.includes(field.toLowerCase())) {
               score += 4
             }
@@ -170,8 +226,10 @@ export class FaissVectorSearch {
         }
         
         // 姓名匹配 (权重: 5)
-        if (queryLower.includes(doc.metadata.name.toLowerCase()) || 
-            queryLower.includes(doc.metadata.name_en.toLowerCase())) {
+        if (metadata.name && (
+            queryLower.includes(metadata.name.toLowerCase()) || 
+            (metadata.name_en && queryLower.includes(metadata.name_en.toLowerCase()))
+        )) {
           score += 5
         }
         
@@ -189,12 +247,12 @@ export class FaissVectorSearch {
         }
         
         return {
-          text: doc.text,
-          metadata: doc.metadata,
+          text,
+          metadata,
           score
         }
       })
-      .filter(result => result.score > 0)
+      .filter((result): result is SearchResult => result !== null && result.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK)
 

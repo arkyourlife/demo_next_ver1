@@ -146,6 +146,8 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
       if (data.success) {
         setGeneratedPlan(data.plan)
         setShowGeneratedPlan(true)
+        // 自动切换到“AI计划”标签页，确保用户立刻看到结果
+        setSelectedTab('ai-plan')
         
         // 可以在这里更新任务列表
         // setTasks(parsePlanToTasks(data.parsedPlan))

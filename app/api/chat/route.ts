@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { chatCompletion } from '@/lib/services/openai'
+import { chatCompletion, embedText } from '@/lib/services/openai'
 import { faissVectorSearch } from '@/lib/rag/faissVectorSearch'
+import { pineconeSearch } from '@/lib/rag/pineconeSearch'
 import { STUDY_ABROAD_ASSISTANT_PROMPT } from '@/lib/services/prompts'
 import { validateConfig } from '@/lib/config'
 
@@ -46,16 +47,35 @@ export async function POST(request: NextRequest) {
       console.log('🔍 搜索相关教授信息...')
       
       try {
-        const searchResults = await faissVectorSearch.search(message, 5)
-        contextDocs = searchResults.map(result => result.text)
-        
-        // 获取搜索统计信息
-        const stats = faissVectorSearch.getStats()
-        searchInfo = {
-          searchMode: faissVectorSearch.getSearchMode(),
-          resultsCount: searchResults.length,
-          stats: stats
+        // 优先 Pinecone 检索（若配置了 PINECONE_API_KEY 和索引）
+        let searchResults: { text: string }[] = []
+        try {
+          if (process.env.PINECONE_API_KEY) {
+            const qVec = await embedText(message)
+            const pineResults = await pineconeSearch.queryVector(qVec, 5)
+            searchResults = pineResults
+            searchInfo = {
+              searchMode: 'pinecone',
+              resultsCount: pineResults.length,
+              stats: { index: process.env.PINECONE_INDEX || 'professors' }
+            }
+          }
+        } catch (e) {
+          console.warn('Pinecone 检索失败，回退到本地检索:', e)
         }
+
+        if (searchResults.length === 0) {
+          const localResults = await faissVectorSearch.search(message, 5)
+          searchResults = localResults
+          // 获取搜索统计信息
+          const stats = faissVectorSearch.getStats()
+          searchInfo = {
+            searchMode: faissVectorSearch.getSearchMode(),
+            resultsCount: localResults.length,
+            stats: stats
+          }
+        }
+        contextDocs = searchResults.map(result => result.text)
         
         console.log(`✅ 找到 ${contextDocs.length} 条相关教授信息 (模式: ${searchInfo.searchMode})`)
       } catch (error) {

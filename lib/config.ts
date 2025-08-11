@@ -7,6 +7,15 @@ export const config = {
   rag: {
     indexPath: process.env.RAG_INDEX_PATH || './data/professor_index.faiss',
     metadataPath: process.env.RAG_METADATA_PATH || './data/professor_metadata.json',
+    // Pinecone 配置
+    pinecone: {
+      apiKey: process.env.PINECONE_API_KEY,
+      indexName: process.env.PINECONE_INDEX || 'professors',
+      environment: process.env.PINECONE_ENV || process.env.PINECONE_ENVIRONMENT || 'us-east-1',
+      namespace: process.env.PINECONE_NAMESPACE || undefined,
+      topK: Number(process.env.PINECONE_TOPK || 5),
+      scoreThreshold: Number(process.env.PINECONE_SCORE_THRESHOLD || 0),
+    }
   },
   app: {
     isDevelopment: process.env.NODE_ENV === 'development',
