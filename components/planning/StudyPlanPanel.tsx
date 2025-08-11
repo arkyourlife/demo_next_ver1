@@ -113,6 +113,11 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
     setIsGenerating(true)
     
     try {
+      console.log('[StudyPlanPanel] start generate plan, target:', {
+        targetCountry: studyPlan.targetCountry,
+        targetMajor: studyPlan.targetMajor,
+        targetDegree: studyPlan.targetDegree,
+      })
       const response = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: {
@@ -133,15 +138,19 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
           targetCountry: studyPlan.targetCountry,
           targetMajor: studyPlan.targetMajor,
           targetDegree: studyPlan.targetDegree,
-          currentStage: '准备阶段'
+          currentStage: '准备阶段',
+          debug: true,
         }),
       })
 
       if (!response.ok) {
+        const text = await response.text()
+        console.error('[StudyPlanPanel] generate-plan api not ok:', response.status, text)
         throw new Error('生成计划失败')
       }
 
       const data = await response.json()
+      console.log('[StudyPlanPanel] generate-plan response:', data)
       
       if (data.success) {
         setGeneratedPlan(data.plan)
@@ -228,8 +237,9 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col p-0">
-        <div className="px-4 pb-3">
-          <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+        {/* 确保 TabsList 与 TabsContent 在同一 Tabs 容器内 */}
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 flex flex-col">
+          <div className="px-4 pb-3">
             <TabsList className="w-full">
               <TabsTrigger value="timeline" className="flex-1">时间线</TabsTrigger>
               <TabsTrigger value="overview" className="flex-1">概览</TabsTrigger>
@@ -237,10 +247,9 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
                 <TabsTrigger value="ai-plan" className="flex-1">AI计划</TabsTrigger>
               )}
             </TabsList>
-          </Tabs>
-        </div>
+          </div>
 
-        <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
           <TabsContent value="timeline" className="mt-0">
             {/* AI生成提示 */}
             {isGenerating && (
@@ -457,6 +466,7 @@ export default function StudyPlanPanel({ studyPlan = defaultPlan }: StudyPlanPan
             </TabsContent>
           )}
         </div>
+        </Tabs>
       </CardContent>
     </Card>
   )

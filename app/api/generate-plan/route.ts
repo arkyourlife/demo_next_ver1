@@ -19,6 +19,7 @@ interface GeneratePlanRequest {
   targetMajor?: string
   targetDegree?: string
   currentStage?: string
+  debug?: boolean
 }
 
 export async function POST(request: NextRequest) {
@@ -27,6 +28,18 @@ export async function POST(request: NextRequest) {
     validateConfig()
     
     const body: GeneratePlanRequest = await request.json()
+    const debug = !!body.debug
+    const t0 = Date.now()
+    if (debug) {
+      console.log('[GeneratePlan][REQ] body keys:', Object.keys(body))
+      console.log('[GeneratePlan][REQ] userProfile:', body.userProfile || null)
+      console.log('[GeneratePlan][REQ] target:', {
+        targetCountry: body.targetCountry,
+        targetMajor: body.targetMajor,
+        targetDegree: body.targetDegree,
+        currentStage: body.currentStage,
+      })
+    }
     const { 
       userProfile = {}, 
       targetCountry = '日本',
@@ -58,17 +71,31 @@ ${personalizedPrompt}
 
 请确保计划具体可执行，时间安排合理。`
 
-    console.log('生成个性化留学申请计划...')
+    if (debug) {
+      console.log('[GeneratePlan][PROMPT] length:', fullPrompt.length)
+      console.log('[GeneratePlan] 生成个性化留学申请计划...')
+    }
     
     // 调用计划生成LLM
+    const t1 = Date.now()
     const planResponse = await chatCompletion([
       { role: 'system', content: PLAN_GENERATOR_PROMPT },
       { role: 'user', content: fullPrompt }
     ], 0.1) // 使用较低的temperature确保计划的一致性
+    const t2 = Date.now()
+    if (debug) {
+      console.log('[GeneratePlan][LLM] request ms:', t2 - t1)
+      console.log('[GeneratePlan][LLM] response length:', planResponse?.length || 0)
+      console.log('[GeneratePlan][LLM] snippet:', (planResponse || '').slice(0, 200))
+    }
 
     // 解析生成的计划（这里可以添加更复杂的解析逻辑）
     const parsedPlan = parsePlanResponse(planResponse)
 
+    const t3 = Date.now()
+    if (debug) {
+      console.log('[GeneratePlan][RESP] parse ok, total ms:', t3 - t0)
+    }
     return NextResponse.json({
       success: true,
       plan: planResponse,
